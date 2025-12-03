@@ -1,4 +1,4 @@
-Distributed Password Cracker
+# 🟣 Pentera Distributed Password Cracker
 
 A fully distributed **Master → Minions** password-cracking system over **REST** only.
 
@@ -19,18 +19,18 @@ passwords-cracker/
 │   │   ├── job_manager.py
 │   │   ├── chunk_manager.py
 │   │   └── scheduler.py
-│   ├── infrastructure/    # Infrastructure layer
-│   │   ├── cache.py
-│   │   ├── circuit_breaker.py
-│   │   ├── minion_client.py
-│   │   └── minion_registry.py
-│   └── api/               # API layer (reserved)
+│   └── infrastructure/    # Infrastructure layer
+│       ├── cache.py
+│       ├── circuit_breaker.py
+│       ├── minion_client.py
+│       └── minion_registry.py
 │
 ├── minion/                # Minion service
 │   ├── api/               # API layer
 │   │   └── app.py         # FastAPI application
 │   ├── services/          # Business logic
-│   │   └── worker.py      # Password cracking worker
+│   │   ├── worker.py      # Password cracking worker
+│   │   └── worker_parallel.py  # Parallel processing worker
 │   └── infrastructure/    # Infrastructure layer
 │       └── cancellation.py
 │
@@ -46,7 +46,7 @@ passwords-cracker/
 │   │   └── scheme_factory.py
 │   ├── config/            # Configuration
 │   │   └── config.py
-│   └── constants.py       # Constants
+│   └── consts.py          # Constants
 │
 ├── tests/                 # Test suite
 │   ├── unit/             # Unit tests
@@ -77,6 +77,7 @@ passwords-cracker/
 - ✅ Idempotent job completion
 - ✅ Caching of cracked passwords
 - ✅ Configurable via environment variables
+- ✅ Multi-threaded parallel processing within minions
 
 ## Configuration
 
@@ -135,39 +136,58 @@ ffffffffffffffffffffffffffffffff FAILED
    ```
 
 3. **Start minions** (in separate terminals):
-   ```bash
-   uvicorn minion.api.app:app --host 0.0.0.0 --port 8000
-   uvicorn minion.api.app:app --host 0.0.0.0 --port 8001
-   uvicorn minion.api.app:app --host 0.0.0.0 --port 8002
+   ```powershell
+   # Terminal 1
+   $env:WORKER_THREADS = "2"  # Balanced (default)
+   py -m uvicorn minion.api.app:app --host 0.0.0.0 --port 8000
+   
+   # Terminal 2
+   $env:WORKER_THREADS = "2"
+   py -m uvicorn minion.api.app:app --host 0.0.0.0 --port 8001
+   
+   # Terminal 3
+   $env:WORKER_THREADS = "2"
+   py -m uvicorn minion.api.app:app --host 0.0.0.0 --port 8002
    ```
 
-4. **Set environment variables:**
-   ```bash
-   export MINION_URLS="http://localhost:8000,http://localhost:8001,http://localhost:8002"
-   export OUTPUT_FILE="data/output.txt"
+4. **Set environment variables** (in a new terminal):
+   ```powershell
+   $env:MINION_URLS = "http://localhost:8000,http://localhost:8001,http://localhost:8002"
+   $env:OUTPUT_FILE = "data/output.txt"
+   
+   # Optional: Optimize settings
+   $env:CHUNK_SIZE = "50000"
+   $env:CANCELLATION_CHECK_EVERY = "10000"
    ```
 
 5. **Run master:**
-   ```bash
-   python main.py data/input.txt
+   ```powershell
+   py main.py data/input.txt
    ```
 
 ### Docker
 
-```bash
+```powershell
 cd docker
 docker-compose up --build
 ```
 
 Output will be written to `data/output.txt`.
 
+**Note**: Docker Compose automatically sets `WORKER_THREADS=2` for all minions (balanced configuration).
+
 ## Testing
 
 ### Running Tests
 
-```bash
+```powershell
 # Run all tests
 py -m pytest tests/ -v
+
+# Run specific test categories
+py -m pytest tests/unit/ -v          # Unit tests only
+py -m pytest tests/integration/ -v    # Integration tests only
+py -m pytest tests/e2e/ -v            # End-to-end tests only
 ```
 
 ### Test Structure
@@ -243,6 +263,19 @@ $env:WORKER_THREADS = "2"  # Default: balanced (good for most systems)
 $env:WORKER_THREADS = "3"  # 3 threads per minion
 ```
 
+**Low Resource** (for 4 cores or less):
+```powershell
+$env:WORKER_THREADS = "1"  # Sequential mode
+# Use 2 minions instead of 3
+$env:MINION_URLS = "http://localhost:8000,http://localhost:8001"
+```
+
+### Performance Characteristics
+
+- **Sequential Mode** (`WORKER_THREADS=1`): ~50,000-100,000 hashes/second per minion
+- **Balanced Mode** (`WORKER_THREADS=2`): ~150,000-200,000 hashes/second per minion
+- **High Performance** (`WORKER_THREADS=3`): ~200,000-250,000 hashes/second per minion
+
 ## Limitations
 
 - No persistence for job state (in-memory only)
@@ -263,4 +296,3 @@ Important events logged:
 - Circuit breaker unavailable/available
 - FOUND / NOT_FOUND / FAILED / CANCELLED
 - Output lines
-
