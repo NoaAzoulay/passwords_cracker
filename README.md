@@ -1,4 +1,4 @@
-# 🟣 Pentera Distributed Password Cracker
+Distributed Password Cracker
 
 A fully distributed **Master → Minions** password-cracking system over **REST** only.
 
@@ -263,3 +263,4 @@ Important events logged:
 - Circuit breaker unavailable/available
 - FOUND / NOT_FOUND / FAILED / CANCELLED
 - Output lines
+
