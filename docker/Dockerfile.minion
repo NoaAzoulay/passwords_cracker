@@ -1,0 +1,17 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY shared/ ./shared/
+COPY minion/ ./minion/
+
+# Remove any __pycache__ directories that might have been copied
+RUN find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+
+EXPOSE 8000
+
+CMD ["uvicorn", "minion.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+

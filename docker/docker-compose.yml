@@ -1,0 +1,81 @@
+services:
+  minion1:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.minion
+    ports:
+      - "8001:8000"
+    environment:
+      - CHUNK_SIZE=100000
+      - CANCELLATION_CHECK_EVERY=5000
+      - WORKER_THREADS=2
+      - MAX_ATTEMPTS=3
+      - MINION_REQUEST_TIMEOUT=5.0
+      - NO_MINION_WAIT_TIME=0.5
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  minion2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.minion
+    ports:
+      - "8002:8000"
+    environment:
+      - CHUNK_SIZE=100000
+      - CANCELLATION_CHECK_EVERY=5000
+      - WORKER_THREADS=2
+      - MAX_ATTEMPTS=3
+      - MINION_REQUEST_TIMEOUT=5.0
+      - NO_MINION_WAIT_TIME=0.5
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  minion3:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.minion
+    ports:
+      - "8003:8000"
+    environment:
+      - CHUNK_SIZE=100000
+      - CANCELLATION_CHECK_EVERY=5000
+      - WORKER_THREADS=2
+      - MAX_ATTEMPTS=3
+      - MINION_REQUEST_TIMEOUT=5.0
+      - NO_MINION_WAIT_TIME=0.5
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  master:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.master
+    volumes:
+      - ../data/input.txt:/app/input.txt:ro
+      - ../data/output.txt:/app/output.txt
+    environment:
+      - CHUNK_SIZE=100000
+      - CANCELLATION_CHECK_EVERY=5000
+      - WORKER_THREADS=2
+      - MAX_ATTEMPTS=3
+      - MINION_REQUEST_TIMEOUT=5.0
+      - NO_MINION_WAIT_TIME=0.5
+      - OUTPUT_FILE=/app/output.txt
+      - MINION_URLS=http://minion1:8000,http://minion2:8000,http://minion3:8000
+      - MINION_FAILURE_THRESHOLD=3
+      - MINION_BREAKER_OPEN_SECONDS=10.0
+    depends_on:
+      - minion1
+      - minion2
+      - minion3
+
