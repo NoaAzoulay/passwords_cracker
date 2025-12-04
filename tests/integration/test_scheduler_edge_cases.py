@@ -5,7 +5,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock
 from shared.domain.models import HashJob, WorkChunk, CrackResultPayload
 from shared.domain.status import JobStatus, ChunkStatus
-from shared.consts import ResultStatus
+from shared.domain.consts import ResultStatus
 from master.services.scheduler import Scheduler
 from master.infrastructure.minion_registry import MinionRegistry
 from master.infrastructure.minion_client import MinionClient
@@ -19,6 +19,7 @@ def mock_registry():
     registry = MagicMock(spec=MinionRegistry)
     registry.pick_next = MagicMock(return_value="http://minion1:8000")
     registry.all_minions = MagicMock(return_value=["http://minion1:8000"])
+    registry.get_available_minions = MagicMock(return_value=["http://minion1:8000"])
     registry.get_breaker = MagicMock()
     return registry
 
@@ -106,11 +107,14 @@ class TestSchedulerEdgeCases:
         assert job.status == JobStatus.FAILED
         mock_job_manager.mark_job_failed.assert_called()
         
-        # Output should contain FAILED
+        # Output should contain FAILED (JSON format)
         output_file = tmp_path / "output.txt"
         if output_file.exists():
-            content = output_file.read_text()
-            assert "FAILED" in content
+            import json
+            content = json.loads(output_file.read_text())
+            # Check that at least one entry has FAILED status
+            has_failed = any(entry.get("status") == "FAILED" for entry in content.values())
+            assert has_failed
     
     @pytest.mark.asyncio
     async def test_mixed_results(self, scheduler, mock_client, mock_job_manager, tmp_path):
@@ -166,7 +170,9 @@ class TestSchedulerEdgeCases:
         assert job.status == JobStatus.DONE
         assert job.password_found == "050-0000000"
         
-        # Cancellation should be broadcast
+        # Cancellation should be broadcast (non-blocking, may complete asynchronously)
+        # Wait a bit for async task to complete
+        await asyncio.sleep(0.1)
         assert mock_client.send_cancel_job.call_count >= 1
     
     @pytest.mark.asyncio

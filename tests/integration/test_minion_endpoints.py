@@ -4,7 +4,7 @@ import pytest
 import hashlib
 from fastapi.testclient import TestClient
 from minion.api.app import app
-from shared.consts import ResultStatus
+from shared.domain.consts import ResultStatus
 from minion.infrastructure.cancellation import CancellationRegistry
 
 
@@ -71,8 +71,10 @@ class TestCrackRangeEndpoint:
         
         response = client.post("/crack-range", json=payload)
         
-        assert response.status_code == 400
-        assert "32 hex characters" in response.json()["detail"]
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == ResultStatus.INVALID_INPUT
+        assert "32 hex characters" in data["error_message"]
     
     def test_crack_range_invalid_hash_too_long(self, client):
         """Test /crack-range with hash that's too long."""
@@ -87,7 +89,10 @@ class TestCrackRangeEndpoint:
         
         response = client.post("/crack-range", json=payload)
         
-        assert response.status_code == 400
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == ResultStatus.INVALID_INPUT
+        assert "32 hex characters" in data["error_message"]
     
     def test_crack_range_invalid_range_start_greater_than_end(self, client):
         """Test /crack-range with invalid range (start > end)."""

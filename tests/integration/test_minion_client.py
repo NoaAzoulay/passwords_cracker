@@ -5,7 +5,7 @@ import respx
 import httpx
 from unittest.mock import AsyncMock, patch
 from shared.domain.models import CrackResultPayload, WorkChunk, RangeDict
-from shared.consts import ResultStatus
+from shared.domain.consts import ResultStatus
 from master.infrastructure.minion_client import MinionClient
 from master.infrastructure.minion_registry import MinionRegistry
 

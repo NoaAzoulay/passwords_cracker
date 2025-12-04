@@ -1,7 +1,6 @@
 """Pytest configuration and fixtures."""
 
 import pytest
-import os
 from unittest.mock import patch
 
 
@@ -23,7 +22,8 @@ def ensure_sequential_for_small_ranges(monkeypatch):
     sequential processing, regardless of WORKER_THREADS setting.
     This makes tests deterministic and faster.
     """
-    # The worker_parallel.py already falls back to sequential for ranges < 10000
+    # The unified worker (minion.services.worker) automatically falls back
+    # to sequential for ranges < 10000 or when WORKER_THREADS <= 1
     # So this is mainly for documentation/clarity
     yield
 

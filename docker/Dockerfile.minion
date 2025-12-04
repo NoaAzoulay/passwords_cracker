@@ -1,17 +1,22 @@
-FROM python:3.11-slim
+ARG BASE_IMAGE=passwords-cracker-base:latest
 
+FROM ${BASE_IMAGE}
+
+# Set working directory for minion
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY shared/ ./shared/
+# Copy minion code
 COPY minion/ ./minion/
 
-# Remove any __pycache__ directories that might have been copied
+# Remove any __pycache__ directories
 RUN find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
-EXPOSE 8000
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONWARNINGS=ignore::RuntimeWarning
 
-CMD ["uvicorn", "minion.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Expose minion port
+EXPOSE 8100
 
+# Set entrypoint to run uvicorn
+ENTRYPOINT ["python", "-m", "uvicorn", "minion.api.app:app", "--host", "0.0.0.0", "--port", "8100"]

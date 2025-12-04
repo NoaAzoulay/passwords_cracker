@@ -1,0 +1,24 @@
+# Examples of INVALID_INPUT hashes
+# These will be marked as INVALID_INPUT in the output
+
+# Too short (less than 32 characters)
+abc123
+too_short
+1234567890abcdef
+
+# Too long (more than 32 characters)
+1234567890abcdef1234567890abcdef123
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab
+
+# Invalid characters (non-hex)
+1234567890abcdef1234567890abcdef!
+1234567890abcdef1234567890abcdefg
+zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
+
+# Contains spaces
+1234567890abcdef1234567890abc def
+
+# Valid hash format (32 hex characters) - this will be NOT_FOUND, not INVALID_INPUT
+ffffffffffffffffffffffffffffffff
+1234567890abcdef1234567890abcdef
+

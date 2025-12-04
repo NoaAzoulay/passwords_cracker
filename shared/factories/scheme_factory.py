@@ -2,14 +2,16 @@
 
 from shared.interfaces.password_scheme import PasswordScheme
 from shared.implementations.schemes import IlPhone05xDashScheme
-from shared.consts import PasswordSchemeName
+from shared.domain.consts import PasswordSchemeName
+
+
+SCHEMES: dict[str, type[PasswordScheme]] = {
+    PasswordSchemeName.IL_PHONE_05X_DASH: IlPhone05xDashScheme,
+}
 
 
 def create_scheme(scheme_name: str) -> PasswordScheme:
     """Factory for creating password schemes.
-    
-    Args:
-        scheme_name: Name of the scheme to create
         
     Returns:
         PasswordScheme instance
@@ -17,8 +19,9 @@ def create_scheme(scheme_name: str) -> PasswordScheme:
     Raises:
         ValueError: If scheme_name is unknown
     """
-    if scheme_name == PasswordSchemeName.IL_PHONE_05X_DASH:
-        return IlPhone05xDashScheme()
-    
-    raise ValueError(f"Unknown scheme: {scheme_name}")
+    try:
+        scheme_cls = SCHEMES[scheme_name]
+    except KeyError:
+        raise ValueError(f"Unknown scheme: {scheme_name}")
+    return scheme_cls()
 

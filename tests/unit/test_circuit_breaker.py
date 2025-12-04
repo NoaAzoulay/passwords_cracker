@@ -1,6 +1,5 @@
 """Tests for circuit breaker behavior."""
 
-import time
 import pytest
 from unittest.mock import patch
 from master.infrastructure.circuit_breaker import MiniCircuitBreaker
@@ -62,19 +61,26 @@ class TestMiniCircuitBreaker:
         threshold = config.MINION_FAILURE_THRESHOLD
         window = config.MINION_BREAKER_OPEN_SECONDS
         
-        # Make the breaker unavailable
-        for _ in range(threshold):
-            breaker.record_failure()
-        
-        assert breaker.is_unavailable() is True
-        
-        # Wait for window to expire (with small buffer)
-        time.sleep(window + 0.1)
-        
-        # Should be available now (is_unavailable checks and resets)
-        assert breaker.is_unavailable() is False
-        assert breaker.failure_count == 0
-        assert breaker.opened_until is None
+        # Mock time to speed up test (instead of waiting 10+ seconds)
+        with patch('master.infrastructure.circuit_breaker.time.time') as mock_time:
+            # Set initial time
+            current_time = 1000.0
+            mock_time.return_value = current_time
+            
+            # Make the breaker unavailable
+            for _ in range(threshold):
+                breaker.record_failure()
+            
+            assert breaker.is_unavailable() is True
+            
+            # Fast-forward time past the window
+            current_time += window + 0.1
+            mock_time.return_value = current_time
+            
+            # Should be available now (is_unavailable checks and resets)
+            assert breaker.is_unavailable() is False
+            assert breaker.failure_count == 0
+            assert breaker.opened_until is None
     
     def test_success_before_threshold_keeps_closed(self):
         """Test that success before threshold keeps breaker available."""

@@ -1,4 +1,4 @@
-# 🟣 Pentera Distributed Password Cracker
+# Distributed Password Cracker
 
 A fully distributed **Master → Minions** password-cracking system over **REST** only.
 
@@ -29,24 +29,23 @@ passwords-cracker/
 │   ├── api/               # API layer
 │   │   └── app.py         # FastAPI application
 │   ├── services/          # Business logic
-│   │   ├── worker.py      # Password cracking worker
-│   │   └── worker_parallel.py  # Parallel processing worker
+│   │   └── worker.py      # Unified password cracking worker (sequential & parallel)
 │   └── infrastructure/    # Infrastructure layer
 │       └── cancellation.py
 │
 ├── shared/                # Shared code
-│   ├── domain/            # Domain models
+│   ├── domain/            # Domain models and constants
 │   │   ├── models.py
-│   │   └── status.py
+│   │   ├── status.py
+│   │   └── consts.py      # Constants (ResultStatus, PasswordSchemeName, etc.)
 │   ├── interfaces/        # Abstract interfaces
 │   │   └── password_scheme.py
 │   ├── implementations/  # Concrete implementations
 │   │   └── schemes/
 │   ├── factories/         # Factory functions
 │   │   └── scheme_factory.py
-│   ├── config/            # Configuration
-│   │   └── config.py
-│   └── consts.py          # Constants
+│   └── config/            # Configuration
+│       └── config.py
 │
 ├── tests/                 # Test suite
 │   ├── unit/             # Unit tests
@@ -68,16 +67,15 @@ passwords-cracker/
 
 ### Key Features
 
-- ✅ Communication via REST only
-- ✅ Splitting workload even for a single hash
-- ✅ Resilient to failures (master/minions crash)
-- ✅ Clean architecture & clean code
-- ✅ Real cancellation (minion-side early stop)
-- ✅ Circuit breaker per minion
-- ✅ Idempotent job completion
-- ✅ Caching of cracked passwords
-- ✅ Configurable via environment variables
-- ✅ Multi-threaded parallel processing within minions
+-  Communication via REST only
+-  Splitting workload even for a single hash
+-  Resilient to failures (master/minions crash)
+-  Real cancellation (minion-side early stop)
+-  Circuit breaker per minion
+-  Idempotent job completion
+-  Caching of cracked passwords
+-  Configurable via environment variables
+-  Multi-threaded parallel processing within minions
 
 ## Configuration
 
@@ -88,6 +86,8 @@ All configuration is done via environment variables in `shared/config.py`:
 | `CHUNK_SIZE` | 100000 | How many indices per chunk |
 | `CANCELLATION_CHECK_EVERY` | 5000 | Worker checks cancel every N iterations |
 | `WORKER_THREADS` | 2 | Number of threads per minion (1 = sequential, 2 = balanced, >2 = high performance) |
+| `MINION_SUBRANGE_MIN_SIZE` | 1000 | Minimum subrange size per thread in parallel mode (larger = less overhead, smaller = more parallelism) |
+| `MAX_CONCURRENT_JOBS` | 3 | Maximum number of hash jobs to process in parallel (default: min(3, num_minions)) |
 | `MAX_ATTEMPTS` | 3 | Retries per chunk |
 | `MINION_REQUEST_TIMEOUT` | 5.0 | Request timeout in seconds |
 | `NO_MINION_WAIT_TIME` | 0.5 | Wait time if no minion available (seconds) |
@@ -107,63 +107,170 @@ All configuration is done via environment variables in `shared/config.py`:
 
 ### Output Format
 
-For each hash, exactly one line:
-- `<hash> <password>` - Password found
-- `<hash> NOT_FOUND` - Password not in search space
-- `<hash> FAILED` - Job failed (infrastructure issue)
+Output is written to a JSON file where each hash is a key with the following structure:
 
-Example:
+```json
+{
+  "hash_value": {
+    "cracked_password": "password_if_found_or_null",
+    "status": "FOUND|NOT_FOUND|FAILED",
+    "job_id": "job_id_string"
+  }
+}
 ```
-1d0b28c7e3ef0ba9d3c04a4183b576ac 050-0000000
-a1b2c3d4e5f6789012345678901234ab NOT_FOUND
-ffffffffffffffffffffffffffffffff FAILED
+
+**Status values:**
+- `FOUND` - Password was found
+- `NOT_FOUND` - Password not in search space (valid hash, searched but not found)
+- `INVALID_INPUT` - Invalid input (invalid hash format, unknown scheme, or range out of bounds)
+- `FAILED` - Job failed (infrastructure issue, exceeded retries)
+
+**Example:**
+```json
+{
+  "1d0b28c7e3ef0ba9d3c04a4183b576ac": {
+    "cracked_password": "050-0000000",
+    "status": "FOUND",
+    "job_id": "abc12345-..."
+  },
+  "a1b2c3d4e5f6789012345678901234ab": {
+    "cracked_password": null,
+    "status": "NOT_FOUND",
+    "job_id": "def67890-..."
+  },
+  "invalid_hash_format_123": {
+    "cracked_password": null,
+    "status": "INVALID_INPUT",
+    "job_id": "xyz99999-..."
+  },
+  "ffffffffffffffffffffffffffffffff": {
+    "cracked_password": null,
+    "status": "FAILED",
+    "job_id": "ghi11111-..."
+  }
+}
 ```
+
+**Note:** Console output still shows human-readable format: `<hash> <password> <job_id>` or `<hash> NOT_FOUND <job_id>` or `<hash> INVALID_INPUT <job_id>` or `<hash> FAILED <job_id>`
 
 ## How to Run
 
 ### Local Development
 
-1. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+#### Step 1: Install Dependencies
 
-2. **Prepare input file:**
-   ```bash
-   # Copy example input file
-   cp data/input.txt.example data/input.txt
-   # Or create your own with MD5 hashes (one per line)
-   ```
+```powershell
+py -m pip install -r requirements.txt
+```
 
-3. **Start minions** (in separate terminals):
-   ```powershell
-   # Terminal 1
-   $env:WORKER_THREADS = "2"  # Balanced (default)
-   py -m uvicorn minion.api.app:app --host 0.0.0.0 --port 8000
-   
-   # Terminal 2
-   $env:WORKER_THREADS = "2"
-   py -m uvicorn minion.api.app:app --host 0.0.0.0 --port 8001
-   
-   # Terminal 3
-   $env:WORKER_THREADS = "2"
-   py -m uvicorn minion.api.app:app --host 0.0.0.0 --port 8002
-   ```
+**Note:** On Windows, use `py -m pip` instead of `pip`. If that doesn't work, try `python -m pip`.
 
-4. **Set environment variables** (in a new terminal):
-   ```powershell
-   $env:MINION_URLS = "http://localhost:8000,http://localhost:8001,http://localhost:8002"
-   $env:OUTPUT_FILE = "data/output.txt"
-   
-   # Optional: Optimize settings
-   $env:CHUNK_SIZE = "50000"
-   $env:CANCELLATION_CHECK_EVERY = "10000"
-   ```
+#### Step 2: Create Input File
 
-5. **Run master:**
-   ```powershell
-   py main.py data/input.txt
-   ```
+Create a file `data/input.txt` with MD5 hashes (one per line):
+
+```powershell
+# Create data directory if it doesn't exist
+mkdir -p data
+
+# Create input file with test hashes
+# Example: echo "1d0b28c7e3ef0ba9d3c04a4183b576ac" > data/input.txt
+```
+
+**Input file format:**
+- One MD5 hash per line (32 hex characters)
+- Empty lines are ignored
+- Invalid hashes are written to output with `INVALID_INPUT` status (not skipped)
+- Example:
+  ```
+  1d0b28c7e3ef0ba9d3c04a4183b576ac
+  a1b2c3d4e5f6789012345678901234ab
+  ffffffffffffffffffffffffffffffff
+  invalid_hash_format
+  ```
+
+#### Step 3: Start Minion Services
+
+Open **3 separate terminal windows** and run one minion in each:
+
+**Terminal 1 (Minion on port 8000):**
+```powershell
+$env:WORKER_THREADS = "2"
+py -m uvicorn minion.api.app:app --host 0.0.0.0 --port 8000
+```
+
+**Terminal 2 (Minion on port 8001):**
+```powershell
+$env:WORKER_THREADS = "2"
+py -m uvicorn minion.api.app:app --host 0.0.0.0 --port 8001
+```
+
+**Terminal 3 (Minion on port 8002):**
+```powershell
+$env:WORKER_THREADS = "2"
+py -m uvicorn minion.api.app:app --host 0.0.0.0 --port 8002
+```
+
+**Note:** Keep these terminals open while running the master. You should see FastAPI startup messages like:
+```
+INFO:     Started server process
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+```
+
+#### Step 4: Configure and Run Master
+
+Open a **4th terminal window** and run:
+
+```powershell
+# Set minion URLs (comma-separated)
+$env:MINION_URLS = "http://localhost:8000,http://localhost:8001,http://localhost:8002"
+
+# Set output file path
+$env:OUTPUT_FILE = "data/output.txt"
+
+# Optional: Tune performance settings
+$env:CHUNK_SIZE = "50000"                    # Smaller chunks = more parallelism
+$env:CANCELLATION_CHECK_EVERY = "10000"      # Check cancellation every N iterations
+$env:MAX_CONCURRENT_JOBS = "3"               # Process 3 hashes in parallel
+
+# Run the master
+py main.py data/input.txt
+```
+
+**Output:**
+- Results are written to `data/output.txt`
+- Progress is logged to the console
+- Each hash gets one line: `<hash> <password> <job_id>` (FOUND), `<hash> NOT_FOUND <job_id>`, `<hash> INVALID_INPUT <job_id>`, or `<hash> FAILED <job_id>`
+
+#### Quick Start (Minimal Setup)
+
+For a quick test with just 2 minions:
+
+**Terminal 1:**
+```powershell
+$env:WORKER_THREADS = "2"
+py -m uvicorn minion.api.app:app --host 0.0.0.0 --port 8000
+```
+
+**Terminal 2:**
+```powershell
+$env:WORKER_THREADS = "2"
+py -m uvicorn minion.api.app:app --host 0.0.0.0 --port 8001
+```
+
+**Terminal 3 (Master):**
+```powershell
+$env:MINION_URLS = "http://localhost:8000,http://localhost:8001"
+$env:OUTPUT_FILE = "data/output.txt"
+py main.py data/input.txt
+```
+
+#### Stopping Services
+
+- **Minions**: Press `CTRL+C` in each minion terminal
+- **Master**: Press `CTRL+C` in the master terminal (or it will exit when done)
 
 ### Docker
 
@@ -171,6 +278,8 @@ ffffffffffffffffffffffffffffffff FAILED
 cd docker
 docker-compose up --build
 ```
+
+**Note:** For local development, use `py -m pip` instead of `pip` on Windows.
 
 Output will be written to `data/output.txt`.
 
@@ -294,5 +403,20 @@ Important events logged:
 - Chunk creation/assignment/completion
 - Retries
 - Circuit breaker unavailable/available
-- FOUND / NOT_FOUND / FAILED / CANCELLED
+- FOUND / NOT_FOUND / INVALID_INPUT / FAILED / CANCELLED
 - Output lines
+
+## Status Codes
+
+### ResultStatus Enum
+- `FOUND` - Password successfully cracked
+- `NOT_FOUND` - Valid hash searched but password not found in search space
+- `INVALID_INPUT` - Invalid input (hash format, scheme, or range validation failed)
+- `ERROR` - Internal error during processing
+- `CANCELLED` - Job was cancelled (typically after password found)
+
+### OutputStatus
+- `FOUND` - Password found (same as ResultStatus.FOUND)
+- `NOT_FOUND` - Password not found (same as ResultStatus.NOT_FOUND)
+- `INVALID_INPUT` - Invalid input detected (same as ResultStatus.INVALID_INPUT)
+- `FAILED` - Job failed after exhausting retries

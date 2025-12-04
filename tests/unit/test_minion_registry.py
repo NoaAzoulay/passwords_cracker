@@ -125,3 +125,4 @@ class TestMinionRegistry:
         registry = MinionRegistry([])
         assert registry.pick_next() is None
 
+

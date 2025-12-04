@@ -1,16 +1,21 @@
-FROM python:3.11-slim
+ARG BASE_IMAGE=passwords-cracker-base:latest
 
+FROM ${BASE_IMAGE}
+
+# Set working directory for master
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY shared/ ./shared/
+# Copy master code and main entry point
 COPY master/ ./master/
 COPY main.py .
 
-# Remove any __pycache__ directories that might have been copied
+# Remove any __pycache__ directories
 RUN find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
-CMD ["python", "main.py", "/app/input.txt"]
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONWARNINGS=ignore::RuntimeWarning
 
+# Set entrypoint (main.py is at /app/main.py, so we can run it directly)
+# Using python main.py instead of python -m main for reliability
+ENTRYPOINT ["python", "main.py"]

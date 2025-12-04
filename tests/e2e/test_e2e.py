@@ -49,7 +49,7 @@ class TestEndToEnd:
         
         # Mock successful FOUND response
         from shared.domain.models import CrackResultPayload
-        from shared.consts import ResultStatus
+        from shared.domain.consts import ResultStatus
         
         mock_client.send_crack_request = AsyncMock(return_value=CrackResultPayload(
             status=ResultStatus.FOUND,
@@ -71,15 +71,23 @@ class TestEndToEnd:
         job = job_manager.create_job(test_hash)
         await scheduler.process_job(job)
         
+        # Wait a bit for cancellation broadcast task to complete (non-blocking)
+        await asyncio.sleep(0.1)
+        
         # Verify results
         assert job.status == JobStatus.DONE
         assert job.password_found == test_password
         assert output_file.exists()
-        content = output_file.read_text()
-        assert test_hash in content
-        assert test_password in content
         
-        # Verify cancellation was broadcast
+        # Verify JSON output format
+        import json
+        content = json.loads(output_file.read_text())
+        assert test_hash in content
+        assert content[test_hash]["cracked_password"] == test_password
+        assert content[test_hash]["status"] == "FOUND"
+        assert content[test_hash]["job_id"] == job.id
+        
+        # Verify cancellation was broadcast (non-blocking, may complete asynchronously)
         assert mock_client.send_cancel_job.call_count >= 1
     
     @pytest.mark.asyncio
@@ -92,7 +100,7 @@ class TestEndToEnd:
         
         from unittest.mock import AsyncMock, MagicMock
         from shared.domain.models import CrackResultPayload
-        from shared.consts import ResultStatus
+        from shared.domain.consts import ResultStatus
         
         mock_client = MagicMock(spec=MinionClient)
         mock_client.registry = registry
@@ -123,9 +131,14 @@ class TestEndToEnd:
         assert job.status == JobStatus.DONE
         assert job.password_found is None
         assert output_file.exists()
-        content = output_file.read_text()
+        
+        # Verify JSON output format
+        import json
+        content = json.loads(output_file.read_text())
         assert fake_hash in content
-        assert "NOT_FOUND" in content
+        assert content[fake_hash]["cracked_password"] is None
+        assert content[fake_hash]["status"] == "NOT_FOUND"
+        assert content[fake_hash]["job_id"] == job.id
     
     @pytest.mark.asyncio
     async def test_e2e_failed_case(self, tmp_path):
@@ -137,7 +150,7 @@ class TestEndToEnd:
         
         from unittest.mock import AsyncMock, MagicMock
         from shared.domain.models import CrackResultPayload
-        from shared.consts import ResultStatus
+        from shared.domain.consts import ResultStatus
         from shared.config.config import config
         
         mock_client = MagicMock(spec=MinionClient)
@@ -169,9 +182,14 @@ class TestEndToEnd:
         # Verify job failed
         assert job.status == JobStatus.FAILED
         assert output_file.exists()
-        content = output_file.read_text()
+        
+        # Verify JSON output format
+        import json
+        content = json.loads(output_file.read_text())
         assert fake_hash in content
-        assert "FAILED" in content
+        assert content[fake_hash]["cracked_password"] is None
+        assert content[fake_hash]["status"] == "FAILED"
+        assert content[fake_hash]["job_id"] == job.id
     
     @pytest.mark.asyncio
     async def test_e2e_cache_hit_skips_scheduling(self, tmp_path):
@@ -214,9 +232,14 @@ class TestEndToEnd:
         
         # But should write output
         assert output_file.exists()
-        content = output_file.read_text()
+        
+        # Verify JSON output format
+        import json
+        content = json.loads(output_file.read_text())
         assert test_hash in content
-        assert test_password in content
+        assert content[test_hash]["cracked_password"] == test_password
+        assert content[test_hash]["status"] == "FOUND"
+        assert content[test_hash]["job_id"] == job.id
     
     @pytest.mark.asyncio
     async def test_e2e_multiple_jobs_sequential(self, tmp_path):
@@ -228,7 +251,7 @@ class TestEndToEnd:
         
         from unittest.mock import AsyncMock, MagicMock
         from shared.domain.models import CrackResultPayload
-        from shared.consts import ResultStatus
+        from shared.domain.consts import ResultStatus
         
         mock_client = MagicMock(spec=MinionClient)
         mock_client.registry = registry
@@ -279,12 +302,20 @@ class TestEndToEnd:
         job2 = job_manager.create_job(fake_hash2)
         await scheduler.process_job(job2)
         
-        # Verify both results in output
-        content = output_file.read_text()
-        lines = content.strip().split('\n')
-        assert len(lines) == 2
-        assert test_hash1 in lines[0]
-        assert test_password1 in lines[0]
-        assert fake_hash2 in lines[1]
-        assert "NOT_FOUND" in lines[1]
+        # Verify both results in output (JSON format)
+        import json
+        content = json.loads(output_file.read_text())
+        assert len(content) == 2
+        
+        # First job: FOUND
+        assert test_hash1 in content
+        assert content[test_hash1]["cracked_password"] == test_password1
+        assert content[test_hash1]["status"] == "FOUND"
+        assert content[test_hash1]["job_id"] == job1.id
+        
+        # Second job: NOT_FOUND
+        assert fake_hash2 in content
+        assert content[fake_hash2]["cracked_password"] is None
+        assert content[fake_hash2]["status"] == "NOT_FOUND"
+        assert content[fake_hash2]["job_id"] == job2.id
 

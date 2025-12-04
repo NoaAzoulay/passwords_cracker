@@ -1,81 +1,77 @@
+version: '3.8'
+
 services:
-  minion1:
+  # Base image builder (build this first)
+  base:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+    image: passwords-cracker-base:latest
+
+  # Minion service (scalable)
+  # Usage: docker-compose up --scale minion=5
+  minion:
     build:
       context: ..
       dockerfile: docker/Dockerfile.minion
-    ports:
-      - "8001:8000"
+      args:
+        BASE_IMAGE: passwords-cracker-base:latest
+    image: passwords-cracker-minion:latest
+    depends_on:
+      base:
+        condition: service_completed_successfully
     environment:
       - CHUNK_SIZE=100000
       - CANCELLATION_CHECK_EVERY=5000
       - WORKER_THREADS=2
+      - MINION_SUBRANGE_MIN_SIZE=1000
       - MAX_ATTEMPTS=3
       - MINION_REQUEST_TIMEOUT=5.0
       - NO_MINION_WAIT_TIME=0.5
+      - PYTHONUNBUFFERED=1
+      - PYTHONWARNINGS=ignore::RuntimeWarning
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
-      interval: 10s
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 3s
       timeout: 5s
-      retries: 3
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    # Note: When scaling, each instance will be accessible as minion_1, minion_2, etc.
+    # Update MINION_URLS in master service accordingly
 
-  minion2:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.minion
-    ports:
-      - "8002:8000"
-    environment:
-      - CHUNK_SIZE=100000
-      - CANCELLATION_CHECK_EVERY=5000
-      - WORKER_THREADS=2
-      - MAX_ATTEMPTS=3
-      - MINION_REQUEST_TIMEOUT=5.0
-      - NO_MINION_WAIT_TIME=0.5
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
-  minion3:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.minion
-    ports:
-      - "8003:8000"
-    environment:
-      - CHUNK_SIZE=100000
-      - CANCELLATION_CHECK_EVERY=5000
-      - WORKER_THREADS=2
-      - MAX_ATTEMPTS=3
-      - MINION_REQUEST_TIMEOUT=5.0
-      - NO_MINION_WAIT_TIME=0.5
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
+  # Master service
   master:
     build:
       context: ..
       dockerfile: docker/Dockerfile.master
-    volumes:
-      - ../data/input.txt:/app/input.txt:ro
-      - ../data/output.txt:/app/output.txt
+      args:
+        BASE_IMAGE: passwords-cracker-base:latest
+    image: passwords-cracker-master:latest
+    depends_on:
+      base:
+        condition: service_completed_successfully
+      minion:
+        condition: service_healthy
     environment:
       - CHUNK_SIZE=100000
       - CANCELLATION_CHECK_EVERY=5000
       - WORKER_THREADS=2
+      - MINION_SUBRANGE_MIN_SIZE=1000
       - MAX_ATTEMPTS=3
       - MINION_REQUEST_TIMEOUT=5.0
       - NO_MINION_WAIT_TIME=0.5
-      - OUTPUT_FILE=/app/output.txt
-      - MINION_URLS=http://minion1:8000,http://minion2:8000,http://minion3:8000
+      - OUTPUT_FILE=/app/data/output.txt
+      # For scaling: Update this to include all minion instances
+      # Example for 5 minions: http://minion_1:8100,http://minion_2:8100,http://minion_3:8100,http://minion_4:8100,http://minion_5:8100
+      - MINION_URLS=http://minion_1:8100,http://minion_2:8100,http://minion_3:8100
       - MINION_FAILURE_THRESHOLD=3
       - MINION_BREAKER_OPEN_SECONDS=10.0
-    depends_on:
-      - minion1
-      - minion2
-      - minion3
-
+      - MAX_CONCURRENT_JOBS=3
+      - PYTHONUNBUFFERED=1
+      - PYTHONWARNINGS=ignore::RuntimeWarning
+    volumes:
+      - ../data/input.txt:/app/data/input.txt:ro
+      - ../data/output.txt:/app/data/output.txt
+    restart: unless-stopped
+    command: ["python", "main.py", "/app/data/input.txt"]

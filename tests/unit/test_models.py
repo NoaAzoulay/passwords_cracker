@@ -3,7 +3,7 @@
 import pytest
 from shared.domain.models import HashJob, WorkChunk, CrackRangePayload, CrackResultPayload, RangeDict
 from shared.domain.status import JobStatus, ChunkStatus
-from shared.consts import ResultStatus
+from shared.domain.consts import ResultStatus
 
 
 class TestHashJob:

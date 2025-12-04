@@ -16,3 +16,4 @@ class BaseStatus(str, Enum):
 JobStatus = BaseStatus
 ChunkStatus = BaseStatus
 
+

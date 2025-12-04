@@ -43,55 +43,62 @@ class TestLoadHashesFromFile:
         test_file = tmp_path / "test.txt"
         test_file.write_text("a" * 32 + "\n" + "b" * 32 + "\n" + "c" * 32)
         
-        hashes = load_hashes_from_file(str(test_file))
+        valid_hashes, invalid_hashes = load_hashes_from_file(str(test_file))
         
-        assert len(hashes) == 3
-        assert "a" * 32 in hashes
-        assert "b" * 32 in hashes
-        assert "c" * 32 in hashes
+        assert len(valid_hashes) == 3
+        assert len(invalid_hashes) == 0
+        assert "a" * 32 in valid_hashes
+        assert "b" * 32 in valid_hashes
+        assert "c" * 32 in valid_hashes
     
     def test_load_empty_file(self, tmp_path):
         """Test loading empty file."""
         test_file = tmp_path / "empty.txt"
         test_file.write_text("")
         
-        hashes = load_hashes_from_file(str(test_file))
+        valid_hashes, invalid_hashes = load_hashes_from_file(str(test_file))
         
-        assert len(hashes) == 0
+        assert len(valid_hashes) == 0
+        assert len(invalid_hashes) == 0
     
     def test_load_file_with_empty_lines(self, tmp_path):
         """Test that empty lines are skipped."""
         test_file = tmp_path / "test.txt"
         test_file.write_text("a" * 32 + "\n\n" + "b" * 32 + "\n   \n" + "c" * 32)
         
-        hashes = load_hashes_from_file(str(test_file))
+        valid_hashes, invalid_hashes = load_hashes_from_file(str(test_file))
         
-        assert len(hashes) == 3
+        assert len(valid_hashes) == 3
+        assert len(invalid_hashes) == 0
     
     def test_load_file_with_invalid_hashes(self, tmp_path):
-        """Test that invalid hashes are skipped."""
+        """Test that invalid hashes are separated from valid ones."""
         test_file = tmp_path / "test.txt"
         test_file.write_text("a" * 32 + "\ninvalid\n" + "b" * 32 + "\ntoo_short")
         
-        hashes = load_hashes_from_file(str(test_file))
+        valid_hashes, invalid_hashes = load_hashes_from_file(str(test_file))
         
-        assert len(hashes) == 2
-        assert "a" * 32 in hashes
-        assert "b" * 32 in hashes
+        assert len(valid_hashes) == 2
+        assert len(invalid_hashes) == 2
+        assert "a" * 32 in valid_hashes
+        assert "b" * 32 in valid_hashes
+        assert "invalid" in invalid_hashes
+        assert "too_short" in invalid_hashes
     
     def test_load_file_with_mixed_case(self, tmp_path):
         """Test that hashes are normalized to lowercase."""
         test_file = tmp_path / "test.txt"
         test_file.write_text("A" * 32 + "\n" + "B" * 32)
         
-        hashes = load_hashes_from_file(str(test_file))
+        valid_hashes, invalid_hashes = load_hashes_from_file(str(test_file))
         
-        assert len(hashes) == 2
-        assert "a" * 32 in hashes
-        assert "b" * 32 in hashes
+        assert len(valid_hashes) == 2
+        assert len(invalid_hashes) == 0
+        assert "a" * 32 in valid_hashes
+        assert "b" * 32 in valid_hashes
     
     def test_load_file_not_found(self):
-        """Test that FileNotFoundError is raised for non-existent file."""
+        """Test that SystemExit is raised for non-existent file."""
         with pytest.raises(SystemExit):
             load_hashes_from_file("nonexistent_file_12345.txt")
 
@@ -113,18 +120,29 @@ class TestMain:
         with patch("main.config") as mock_config:
             mock_config.OUTPUT_FILE = str(output_file)
             mock_config.MINION_URLS = ["http://localhost:8000"]
+            mock_config.MAX_CONCURRENT_JOBS = 3
             
             # Mock components to avoid actual initialization
-            with patch("main.CrackedCache"), \
+            with patch("main.CrackedCache") as mock_cache_class, \
                  patch("main.MinionRegistry"), \
                  patch("main.MinionClient"), \
                  patch("main.JobManager"), \
                  patch("main.Scheduler"):
                 
+                # Create mock cache instance with clear method
+                mock_cache = MagicMock()
+                mock_cache_class.return_value = mock_cache
+                
                 # Should exit with code 0
                 with pytest.raises(SystemExit) as exc_info:
                     await main()
                 assert exc_info.value.code == 0
+                
+                # Verify CrackedCache was instantiated
+                mock_cache_class.assert_called_once()
+                
+                # Verify cache.clear() was called at startup
+                mock_cache.clear.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_main_no_args(self, monkeypatch):
@@ -143,4 +161,5 @@ class TestMain:
         with pytest.raises(SystemExit) as exc_info:
             await main()
         assert exc_info.value.code == 1
+
 

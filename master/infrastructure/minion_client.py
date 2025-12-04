@@ -3,19 +3,26 @@
 import logging
 import httpx
 import uuid
-from typing import Optional
 from shared.config.config import config
 from shared.domain.models import CrackRangePayload, CrackResultPayload, WorkChunk, RangeDict
-from shared.consts import ResultStatus, CancelJobFields
+from shared.domain.consts import ResultStatus, CancelJobFields, HashDisplay
 from master.infrastructure.minion_registry import MinionRegistry
 
 logger = logging.getLogger(__name__)
 
 
 class MinionClient:
-    """HTTP client for minion communication."""
+    """
+    HTTP client for minion communication.
     
-    def __init__(self, registry: MinionRegistry):
+    Handles all HTTP requests to minions, including crack requests and
+    cancellation. Integrates with circuit breakers for failure handling.
+    """
+    
+    def __init__(self, registry: MinionRegistry) -> None:
+        """
+        Initialize minion client.
+        """
         self.registry = registry
         self.client = httpx.AsyncClient(
             timeout=config.MINION_REQUEST_TIMEOUT,
@@ -54,27 +61,34 @@ class MinionClient:
         
         try:
             logger.debug(
-                f"Sending request {request_id} to {minion_url} "
-                f"for chunk {chunk.id} range [{chunk.start_index}, {chunk.end_index}]"
+                f"Job {job_id[:8]}...: Sending request {request_id[:8]}... "
+                f"to {minion_url} for chunk {chunk.id[:8]}... "
+                f"range [{chunk.start_index}, {chunk.end_index}]"
             )
             
-            # Use Pydantic's model_dump() to serialize to dict - avoids string typos!
             response = await self.client.post(
                 f"{minion_url}/crack-range",
                 json=payload.model_dump()
             )
             response.raise_for_status()
             
-            # Parse response using Pydantic model - type-safe!
             result = CrackResultPayload.model_validate(response.json())
             
             # Record success (even NOT_FOUND is a logical success)
             breaker.record_success()
             
+            logger.debug(
+                f"Job {job_id[:8]}...: Request {request_id[:8]}... "
+                f"to {minion_url} completed with status {result.status}"
+            )
+            
             return result
         
         except httpx.HTTPError as e:
-            logger.error(f"HTTP error communicating with {minion_url}: {e}")
+            logger.error(
+                f"Job {job_id[:8]}...: HTTP error communicating with {minion_url} "
+                f"for chunk {chunk.id[:8]}...: {e}"
+            )
             breaker.record_failure()
             return CrackResultPayload(
                 status=ResultStatus.ERROR,
@@ -83,7 +97,11 @@ class MinionClient:
                 error_message=f"HTTP error: {str(e)}",
             )
         except Exception as e:
-            logger.error(f"Unexpected error communicating with {minion_url}: {e}", exc_info=True)
+            logger.error(
+                f"Job {job_id[:8]}...: Unexpected error communicating with {minion_url} "
+                f"for chunk {chunk.id[:8]}...: {e}",
+                exc_info=True,
+            )
             breaker.record_failure()
             return CrackResultPayload(
                 status=ResultStatus.ERROR,
@@ -94,21 +112,34 @@ class MinionClient:
     
     async def send_cancel_job(self, minion_url: str, job_id: str) -> None:
         """
-        Send cancel request to minion (best-effort).
-        Network errors do not fail the job.
+        Send cancel request to minion (best-effort, non-blocking).
+        
+        Network errors do not fail the job. This is called asynchronously
+        and exceptions are caught and logged.
         """
         try:
-            logger.debug(f"Sending cancel request for job {job_id} to {minion_url}")
+            logger.debug(
+                f"Job {job_id[:8]}...: Sending cancel request to {minion_url}"
+            )
             await self.client.post(
                 f"{minion_url}/cancel-job",
                 json={CancelJobFields.JOB_ID: job_id},
                 timeout=2.0,  # Shorter timeout for cancel
             )
+            logger.debug(
+                f"Job {job_id[:8]}...: Cancel request sent successfully to {minion_url}"
+            )
         except Exception as e:
             # Best-effort: log but don't fail
-            logger.debug(f"Failed to send cancel to {minion_url} for job {job_id}: {e}")
+            logger.debug(
+                f"Job {job_id[:8]}...: Failed to send cancel to {minion_url}: {e}"
+            )
     
-    async def close(self):
-        """Close HTTP client."""
+    async def close(self) -> None:
+        """
+        Close HTTP client and cleanup resources.
+        
+        Should be called when done with the client to properly close connections.
+        """
         await self.client.aclose()
 

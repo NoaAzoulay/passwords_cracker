@@ -158,4 +158,28 @@ class TestJobManager:
         job = job_manager.create_job(hash_value, scheme_name="il_phone_05x_dash")
         
         assert job.scheme == "il_phone_05x_dash"
+    
+    def test_clear_cache(self, job_manager, cache):
+        """Test that clear_cache() clears the underlying cache."""
+        hash_value = "a" * 32
+        password = "050-0000000"
+        
+        # Add entry to cache
+        cache.put(hash_value, password)
+        assert cache.get(hash_value) == password
+        
+        # Clear via JobManager
+        job_manager.clear_cache()
+        
+        # Verify cache is cleared
+        assert cache.get(hash_value) is None
+    
+    def test_clear_cache_empty_cache(self, job_manager):
+        """Test that clear_cache() on empty cache does not raise."""
+        # Should not raise
+        job_manager.clear_cache()
+        
+        # Cache should still be empty
+        assert job_manager.cache.get("a" * 32) is None
+
 

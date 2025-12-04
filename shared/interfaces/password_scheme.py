@@ -15,9 +15,6 @@ class PasswordScheme(ABC):
     @abstractmethod
     def index_to_password(self, index: int) -> str:
         """Convert index to password.
-        
-        Args:
-            index: Integer index in the password space
             
         Returns:
             Password string corresponding to the index
@@ -35,4 +32,5 @@ class PasswordScheme(ABC):
             Tuple of (min_index, max_index) inclusive
         """
         pass
+
 

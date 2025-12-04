@@ -79,4 +79,70 @@ class TestCrackedCache:
         assert cache.get("abcdef" * 5 + "abcd") == "050-0000000"
         assert cache.get("ABCDEF" * 5 + "ABCD") == "050-0000000"
         assert cache.get("AbCdEf" * 5 + "AbCd") == "050-0000000"
+    
+    def test_cache_clear(self):
+        """Test that clear() removes all cached entries."""
+        cache = CrackedCache()
+        
+        # Add some entries
+        cache.put("a" * 32, "050-0000000")
+        cache.put("b" * 32, "050-0000001")
+        cache.put("c" * 32, "050-0000002")
+        
+        # Verify entries exist
+        assert cache.get("a" * 32) == "050-0000000"
+        assert cache.get("b" * 32) == "050-0000001"
+        assert cache.get("c" * 32) == "050-0000002"
+        
+        # Clear cache
+        cache.clear()
+        
+        # Verify all entries are gone
+        assert cache.get("a" * 32) is None
+        assert cache.get("b" * 32) is None
+        assert cache.get("c" * 32) is None
+    
+    def test_cache_clear_empty_cache(self):
+        """Test that clear() on empty cache does not raise."""
+        cache = CrackedCache()
+        
+        # Should not raise
+        cache.clear()
+        
+        # Cache should still be empty
+        assert cache.get("a" * 32) is None
+    
+    def test_cache_clear_preserves_case_normalization(self):
+        """Test that clearing does not break case normalization behavior."""
+        cache = CrackedCache()
+        
+        # Add entry with uppercase
+        cache.put("A" * 32, "050-0000000")
+        assert cache.get("a" * 32) == "050-0000000"
+        
+        # Clear cache
+        cache.clear()
+        
+        # Add new entry with lowercase
+        cache.put("a" * 32, "050-0000001")
+        
+        # Should still work with case-insensitive lookup
+        assert cache.get("A" * 32) == "050-0000001"
+        assert cache.get("a" * 32) == "050-0000001"
+    
+    def test_cache_clear_allows_reuse(self):
+        """Test that cache can be used normally after clearing."""
+        cache = CrackedCache()
+        
+        # Add and clear
+        cache.put("a" * 32, "050-0000000")
+        cache.clear()
+        
+        # Should be able to add new entries
+        cache.put("b" * 32, "050-0000001")
+        assert cache.get("b" * 32) == "050-0000001"
+        
+        # Old entry should still be gone
+        assert cache.get("a" * 32) is None
+
 

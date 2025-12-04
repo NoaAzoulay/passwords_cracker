@@ -22,9 +22,6 @@ class IlPhone05xDashScheme(PasswordScheme):
         """Convert index to password format 05X-XXXXXXX.
         
         Optimized for performance: uses string formatting efficiently.
-        
-        Args:
-            index: Integer index in range [0, 99,999,999]
             
         Returns:
             Password string in format "05X-XXXXXXX"

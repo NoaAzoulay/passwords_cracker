@@ -1,10 +1,10 @@
 """Domain models for jobs, chunks, and payloads."""
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any, Literal
+from typing import List, Optional, Literal
 from pydantic import BaseModel, Field, model_validator, ConfigDict
 from shared.domain.status import JobStatus, ChunkStatus
-from shared.consts import PasswordSchemeName, HashAlgorithm
+from shared.domain.consts import PasswordSchemeName, HashAlgorithm
 
 
 @dataclass
@@ -87,9 +87,9 @@ class CrackResultPayload(BaseModel):
         }
     )
     
-    status: Literal["FOUND", "NOT_FOUND", "CANCELLED", "ERROR"] = Field(
+    status: Literal["FOUND", "NOT_FOUND", "CANCELLED", "ERROR", "INVALID_INPUT"] = Field(
         ..., 
-        description="Result status: FOUND, NOT_FOUND, CANCELLED, or ERROR"
+        description="Result status: FOUND, NOT_FOUND, CANCELLED, ERROR, or INVALID_INPUT"
     )
     found_password: Optional[str] = Field(None, description="Password if found")
     last_index_processed: int = Field(0, ge=0, description="Last index processed (must be >= 0)")
